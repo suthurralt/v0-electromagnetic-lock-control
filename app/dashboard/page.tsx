@@ -3,36 +3,28 @@
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { LogOut, Lock } from "lucide-react"
+import { LogOut, Lock, Unlock, Plus } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
-import { NfcScanner } from "@/components/nfc-scanner"
-import { LockerAnimation } from "@/components/locker-animation"
-import { StatusIndicator } from "@/components/status-indicator"
-import { AccessLog, type AccessLogEntry } from "@/components/access-log"
-
-type LockerStatus = "idle" | "scanning" | "verifying" | "granted" | "denied"
 
 export default function DashboardPage() {
   const router = useRouter()
-  const [status, setStatus] = useState<LockerStatus>("idle")
-  const [isNfcSupported, setIsNfcSupported] = useState(true)
   const [userEmail, setUserEmail] = useState<string | null>(null)
-  const [accessLog, setAccessLog] = useState<AccessLogEntry[]>([])
+  const [username, setUsername] = useState<string | null>(null)
 
   useEffect(() => {
     const supabase = createClient()
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (user) {
         setUserEmail(user.email ?? null)
+        // Extraer username del email ficticio
+        const email = user.email ?? ""
+        if (email.endsWith("@lock.app")) {
+          setUsername(email.replace("@lock.app", ""))
+        } else {
+          setUsername(user.user_metadata?.username ?? email)
+        }
       }
     })
-
-    // Check NFC support
-    if (typeof window !== "undefined" && "NDEFReader" in window) {
-      setIsNfcSupported(true)
-    } else {
-      setIsNfcSupported(false)
-    }
   }, [])
 
   const handleLogout = async () => {
@@ -40,68 +32,6 @@ export default function DashboardPage() {
     await supabase.auth.signOut()
     router.push("/login")
     router.refresh()
-  }
-
-  const handleScan = async () => {
-    setStatus("scanning")
-
-    // Simulate NFC scan for demo (in real app, use NDEFReader)
-    setTimeout(async () => {
-      // Simulated NFC ID - in real implementation this comes from the NFC tag
-      const simulatedNfcId = "NFC-LOCKER-001"
-      
-      setStatus("verifying")
-
-      try {
-        const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-
-        if (!user) {
-          setStatus("denied")
-          return
-        }
-
-        // Check if user has permission for this lock
-        const { data: permission } = await supabase
-          .from("user_locks")
-          .select(`
-            id,
-            locks (
-              id,
-              name,
-              nfc_id
-            )
-          `)
-          .eq("user_id", user.id)
-          .eq("locks.nfc_id", simulatedNfcId)
-          .single()
-
-        const newEntry: AccessLogEntry = {
-          id: Date.now().toString(),
-          lockerId: simulatedNfcId,
-          lockerName: permission?.locks?.name ?? "Locker Desconocido",
-          timestamp: new Date(),
-          success: !!permission,
-          userId: user.id,
-        }
-
-        setAccessLog((prev) => [newEntry, ...prev.slice(0, 9)])
-
-        if (permission) {
-          setStatus("granted")
-          // Here you would send the command to ESP8266
-          // await fetch('http://ESP8266_IP/open', { method: 'POST' })
-        } else {
-          setStatus("denied")
-        }
-      } catch (error) {
-        console.error("Error verifying access:", error)
-        setStatus("denied")
-      }
-
-      // Reset after 3 seconds
-      setTimeout(() => setStatus("idle"), 3000)
-    }, 2000)
   }
 
   return (
@@ -115,7 +45,7 @@ export default function DashboardPage() {
             </div>
             <div>
               <h1 className="font-semibold text-card-foreground">SmartLocker</h1>
-              <p className="text-xs text-muted-foreground">{userEmail}</p>
+              <p className="text-xs text-muted-foreground">{username}</p>
             </div>
           </div>
           <Button variant="outline" size="sm" onClick={handleLogout}>
@@ -127,25 +57,33 @@ export default function DashboardPage() {
 
       {/* Main Content */}
       <div className="container mx-auto px-4 py-8">
-        <div className="max-w-md mx-auto space-y-8">
-          {/* Locker Animation */}
-          <div className="flex justify-center py-8">
-            <LockerAnimation status={status} />
+        <div className="max-w-md mx-auto space-y-6">
+          <div className="text-center mb-8">
+            <h2 className="text-2xl font-bold text-foreground">Bienvenido</h2>
+            <p className="text-muted-foreground mt-2">Que deseas hacer?</p>
           </div>
 
-          {/* Status Indicator */}
-          <StatusIndicator status={status} />
+          {/* Menu Options */}
+          <div className="space-y-4">
+            <Button
+              variant="default"
+              size="lg"
+              className="w-full h-20 text-lg flex items-center justify-center gap-3"
+              onClick={() => router.push("/dashboard/abrir")}
+            >
+              <Unlock className="h-6 w-6" />
+              Abrir Locker
+            </Button>
 
-          {/* NFC Scanner */}
-          <NfcScanner
-            status={status}
-            onScan={handleScan}
-            isNfcSupported={isNfcSupported}
-          />
-
-          {/* Access Log */}
-          <div className="pt-4">
-            <AccessLog entries={accessLog} />
+            <Button
+              variant="outline"
+              size="lg"
+              className="w-full h-20 text-lg flex items-center justify-center gap-3"
+              onClick={() => router.push("/dashboard/pedir")}
+            >
+              <Plus className="h-6 w-6" />
+              Pedir Locker
+            </Button>
           </div>
         </div>
       </div>
