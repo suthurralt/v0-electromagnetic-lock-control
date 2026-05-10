@@ -69,7 +69,7 @@ export default function LoginPage() {
           </div>
           <h1 className="text-2xl font-bold text-foreground">SmartLocker</h1>
           <p className="text-muted-foreground">
-            {mode === "login" ? "Inicia sesión para continuar" : "Crea tu cuenta"}
+            {mode === "login" ? "Inicia sesion para continuar" : "Crea tu cuenta"}
           </p>
         </div>
 
@@ -141,7 +141,7 @@ export default function LoginPage() {
               }}
               className="text-sm text-muted-foreground hover:text-foreground"
             >
-              {mode === "login" ? "No tenes cuenta? Registrate" : "Ya tenes cuenta? Inicia sesión"}
+              {mode === "login" ? "No tenes cuenta? Registrate" : "Ya tenes cuenta? Inicia sesion"}
             </button>
           </div>
         </form>
