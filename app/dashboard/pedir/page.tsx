@@ -70,6 +70,34 @@ export default function PedirLockerPage() {
     }
   }
 
+  const handleReturn = async (lock: LockWithStatus) => {
+    setAssigning(lock.id)
+    setMessage(null)
+
+    const supabase = createClient()
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error("No hay sesion")
+
+      const { error } = await supabase
+        .from("user_locks")
+        .delete()
+        .eq("user_id", user.id)
+        .eq("lock_id", lock.id)
+
+      if (error) throw error
+
+      setMessage({ type: "success", text: `${lock.name} devuelto correctamente` })
+      await loadLocks()
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Error al devolver locker"
+      setMessage({ type: "error", text: errorMessage })
+    } finally {
+      setAssigning(null)
+    }
+  }
+
   const handleAssign = async (lock: LockWithStatus) => {
     setAssigning(lock.id)
     setMessage(null)
@@ -180,9 +208,19 @@ export default function PedirLockerPage() {
                       </div>
 
                       {lock.isAssignedToMe ? (
-                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
-                          <Check className="h-5 w-5 text-primary" />
-                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleReturn(lock)}
+                          disabled={assigning === lock.id}
+                          className="text-destructive border-destructive hover:bg-destructive/10"
+                        >
+                          {assigning === lock.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            "Devolver"
+                          )}
+                        </Button>
                       ) : !lock.isAssigned ? (
                         <Button
                           size="sm"
