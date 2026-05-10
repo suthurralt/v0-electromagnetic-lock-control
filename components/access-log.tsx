@@ -32,7 +32,7 @@ export function AccessLog({ entries }: AccessLogProps) {
     <div className="rounded-xl border border-border bg-card overflow-hidden">
       <div className="border-b border-border bg-muted/50 px-4 py-3">
         <h3 className="font-semibold text-card-foreground">
-          Ultimos Intentos de Acceso
+          Últimos intentos de acceso
         </h3>
       </div>
       <div className="divide-y divide-border">
