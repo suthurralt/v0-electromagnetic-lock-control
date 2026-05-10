@@ -3,24 +3,30 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { Lock, Mail, Eye, EyeOff } from "lucide-react"
+import { Lock, User, Eye, EyeOff } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 
 export default function LoginPage() {
   const router = useRouter()
-  const [email, setEmail] = useState("")
+  const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState("")
+  const [success, setSuccess] = useState("")
   const [loading, setLoading] = useState(false)
   const [mode, setMode] = useState<"login" | "register">("login")
+
+  // Convierte el username a un email ficticio para Supabase
+  const usernameToEmail = (user: string) => `${user.toLowerCase().trim()}@lock.app`
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
+    setSuccess("")
     setLoading(true)
 
     const supabase = createClient()
+    const email = usernameToEmail(username)
 
     try {
       if (mode === "login") {
@@ -36,13 +42,15 @@ export default function LoginPage() {
           email,
           password,
           options: {
-            emailRedirectTo:
-              process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL ??
-              `${window.location.origin}/auth/callback`,
+            data: {
+              username: username.trim(),
+            },
           },
         })
         if (error) throw error
-        setError("Revisa tu email para confirmar tu cuenta")
+        setSuccess("Usuario registrado. Ahora podes iniciar sesion.")
+        setMode("login")
+        setPassword("")
       }
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : "Error desconocido"
@@ -67,15 +75,15 @@ export default function LoginPage() {
 
         <form onSubmit={handleSubmit} className="bg-card rounded-2xl border border-border p-6 space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-2 text-card-foreground">Email</label>
+            <label className="block text-sm font-medium mb-2 text-card-foreground">Usuario</label>
             <div className="relative">
-              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+              <User className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
               <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
                 className="w-full pl-10 pr-4 py-3 border border-input rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                placeholder="tu@email.com"
+                placeholder="Tu nombre de usuario"
                 required
               />
             </div>
@@ -105,8 +113,14 @@ export default function LoginPage() {
           </div>
 
           {error && (
-            <div className={`p-3 rounded-lg text-sm ${error.includes("Revisa") ? "bg-primary/10 text-primary" : "bg-destructive/10 text-destructive"}`}>
+            <div className="p-3 rounded-lg text-sm bg-destructive/10 text-destructive">
               {error}
+            </div>
+          )}
+
+          {success && (
+            <div className="p-3 rounded-lg text-sm bg-primary/10 text-primary">
+              {success}
             </div>
           )}
 
