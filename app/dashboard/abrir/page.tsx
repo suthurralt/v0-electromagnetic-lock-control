@@ -82,90 +82,94 @@ export default function AbrirLockerPage() {
     }
   }
 
-  const handleScan = async () => {
-    setStatus("scanning")
+  try {
 
-    // Simulate NFC scan for demo - using the prototype NFC ID
-    setTimeout(async () => {
-      const simulatedNfcId = "NFC-PROTO-001-ABC123"
-      
-      setStatus("verifying")
+  if (!("NDEFReader" in window)) {
+    setStatus("denied")
+    return
+  }
 
-      try {
-        const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
+  const ndef = new NDEFReader()
 
-        if (!user) {
-          setStatus("denied")
-          setTimeout(() => setStatus("idle"), 3000)
-          return
-        }
+  await ndef.scan()
 
-        // Get lock by NFC ID
-        const { data: lock } = await supabase
-          .from("locks")
-          .select("id, name, nfc_id")
-          .eq("nfc_id", simulatedNfcId)
-          .single()
+  ndef.onreading = async (event) => {
 
-        if (!lock) {
-          setStatus("denied")
-          setTimeout(() => setStatus("idle"), 3000)
-          return
-        }
+    setStatus("verifying")
 
-        // Check if user has permission for this lock (using nfc_id)
-        const { data: permission } = await supabase
-          .from("user_locks")
-          .select("id")
-          .eq("user_id", user.id)
-          .eq("nfc_id", lock.nfc_id)
-          .single()
+    const nfcId = event.serialNumber
 
-        const accessSuccess = !!permission
+    console.log("NFC:", nfcId)
 
-        // Save access log to database
-        const { data: savedLog, error: logError } = await supabase
-          .from("access_logs")
-          .insert({
-            nfc_id: lock.nfc_id,
-            user_id: user.id,
-            success: accessSuccess,
-          })
-          .select("id")
-          .single()
+    try {
 
-        if (logError) {
-          console.error("Error saving access log:", logError)
-        }
+      const supabase = createClient()
 
-        const newEntry: AccessLogEntry = {
-          id: savedLog?.id || Date.now().toString(),
-          lockerId: lock.nfc_id,
-          lockerName: lock.name,
-          timestamp: new Date(),
-          success: accessSuccess,
-          userId: user.id,
-        }
+      const { data: { user } } = await supabase.auth.getUser()
 
-        setAccessLog((prev) => [newEntry, ...prev.slice(0, 19)])
-
-        if (accessSuccess) {
-          setStatus("granted")
-          // Here you would send the command to ESP8266
-          // await fetch('http://ESP8266_IP/open', { method: 'POST' })
-        } else {
-          setStatus("denied")
-        }
-      } catch (error) {
-        console.error("Error verifying access:", error)
+      if (!user) {
         setStatus("denied")
+        return
       }
 
-      // Reset after 3 seconds
-      setTimeout(() => setStatus("idle"), 3000)
-    }, 2000)
+      const { data: lock } = await supabase
+        .from("locks")
+        .select("id, name, nfc_id")
+        .eq("nfc_id", nfcId)
+        .single()
+
+      if (!lock) {
+        setStatus("denied")
+        return
+      }
+
+      const { data: permission } = await supabase
+        .from("user_locks")
+        .select("id")
+        .eq("user_id", user.id)
+        .eq("lock_id", lock.id)
+        .single()
+
+      const newEntry: AccessLogEntry = {
+        id: Date.now().toString(),
+        lockerId: nfcId,
+        lockerName: lock.name,
+        timestamp: new Date(),
+        success: !!permission,
+        userId: user.id,
+      }
+
+      setAccessLog((prev) => [newEntry, ...prev.slice(0, 9)])
+
+      if (permission) {
+
+        setStatus("granted")
+
+      } else {
+
+        setStatus("denied")
+
+      }
+
+    } catch (error) {
+
+      console.error(error)
+
+      setStatus("denied")
+
+    }
+
+    setTimeout(() => setStatus("idle"), 3000)
+
   }
+
+} catch (error) {
+
+  console.error(error)
+
+  setStatus("denied")
+
+}
 
   return (
     <main className="min-h-screen bg-background">
