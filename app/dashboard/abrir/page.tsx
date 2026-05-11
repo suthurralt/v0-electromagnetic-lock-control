@@ -121,13 +121,6 @@ export default function AbrirLockerPage() {
         .replaceAll(":", "")
         .toLowerCase()
 
-        console.log("NFC:", nfcId)
-
-        alert(nfcId)
-
-        console.log("NFC:", nfcId)
-
-        const supabase = createClient()
 
         try {
           const {
