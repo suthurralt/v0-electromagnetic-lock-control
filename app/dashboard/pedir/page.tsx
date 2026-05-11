@@ -264,7 +264,7 @@ export default function PedirLockerPage() {
                       )}
                     </div>
                   </div>
-                )})}
+                )})
               )}
             </div>
           )}
