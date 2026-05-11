@@ -10,7 +10,7 @@ interface LockWithStatus {
   id: string
   name: string
   nfc_id: string
-  isAssigned: boolean
+  assignedCount: number  // How many users have this locker (max 6)
   isAssignedToMe: boolean
 }
 
@@ -33,7 +33,7 @@ export default function PedirLockerPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
-      // Get all locks
+      // Get all locks from the locks table
       const { data: allLocks } = await supabase
         .from("locks")
         .select("id, name, nfc_id")
@@ -41,25 +41,29 @@ export default function PedirLockerPage() {
 
       if (!allLocks) return
 
-      // Get my assigned locks
+      // Get my assigned locks (by nfc_id)
       const { data: myLocks } = await supabase
         .from("user_locks")
-        .select("lock_id")
+        .select("nfc_id")
         .eq("user_id", user.id)
 
-      const myLockIds = new Set(myLocks?.map(l => l.lock_id) ?? [])
+      const myNfcIds = new Set(myLocks?.map(l => l.nfc_id) ?? [])
 
-      // Get all assigned locks (to know which are taken)
+      // Get count of users per locker (by nfc_id)
       const { data: allAssignments } = await supabase
         .from("user_locks")
-        .select("lock_id")
+        .select("nfc_id")
 
-      const assignedLockIds = new Set(allAssignments?.map(l => l.lock_id) ?? [])
+      // Count assignments per nfc_id
+      const assignmentCounts: Record<string, number> = {}
+      allAssignments?.forEach(a => {
+        assignmentCounts[a.nfc_id] = (assignmentCounts[a.nfc_id] || 0) + 1
+      })
 
       const locksWithStatus: LockWithStatus[] = allLocks.map(lock => ({
         ...lock,
-        isAssigned: assignedLockIds.has(lock.id),
-        isAssignedToMe: myLockIds.has(lock.id),
+        assignedCount: assignmentCounts[lock.nfc_id] || 0,
+        isAssignedToMe: myNfcIds.has(lock.nfc_id),
       }))
 
       setLocks(locksWithStatus)
@@ -80,11 +84,12 @@ export default function PedirLockerPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error("No hay sesion")
 
+      // Delete by user_id + nfc_id (the record is removed, not marked as returned)
       const { error } = await supabase
         .from("user_locks")
         .delete()
         .eq("user_id", user.id)
-        .eq("lock_id", lock.id)
+        .eq("nfc_id", lock.nfc_id)
 
       if (error) throw error
 
@@ -108,14 +113,25 @@ export default function PedirLockerPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error("No hay sesion")
 
+      // Check if already at max capacity (6 users)
+      if (lock.assignedCount >= 6) {
+        throw new Error("Este locker ya tiene el maximo de usuarios (6)")
+      }
+
+      // Insert with nfc_id instead of lock_id
       const { error } = await supabase
         .from("user_locks")
         .insert({
           user_id: user.id,
-          lock_id: lock.id,
+          nfc_id: lock.nfc_id,
         })
 
-      if (error) throw error
+      if (error) {
+        if (error.message.includes("Maximum 6 users")) {
+          throw new Error("Este locker ya tiene el maximo de usuarios (6)")
+        }
+        throw error
+      }
 
       setMessage({ type: "success", text: `${lock.name} asignado correctamente` })
       await loadLocks()
@@ -179,7 +195,7 @@ export default function PedirLockerPage() {
                     className={`p-4 rounded-xl border ${
                       lock.isAssignedToMe
                         ? "border-primary bg-primary/5"
-                        : lock.isAssigned
+                        : lock.assignedCount >= 6
                         ? "border-border bg-muted/50"
                         : "border-border bg-card"
                     }`}
@@ -189,7 +205,7 @@ export default function PedirLockerPage() {
                         <div className={`flex h-12 w-12 items-center justify-center rounded-lg ${
                           lock.isAssignedToMe
                             ? "bg-primary text-primary-foreground"
-                            : lock.isAssigned
+                            : lock.assignedCount >= 6
                             ? "bg-muted text-muted-foreground"
                             : "bg-secondary text-secondary-foreground"
                         }`}>
@@ -200,9 +216,9 @@ export default function PedirLockerPage() {
                           <p className="text-sm text-muted-foreground">
                             {lock.isAssignedToMe 
                               ? "Asignado a ti" 
-                              : lock.isAssigned 
-                              ? "No disponible" 
-                              : "Disponible"}
+                              : lock.assignedCount >= 6 
+                              ? "Locker lleno (6/6)" 
+                              : `Disponible (${lock.assignedCount}/6 usuarios)`}
                           </p>
                         </div>
                       </div>
@@ -221,7 +237,7 @@ export default function PedirLockerPage() {
                             "Devolver"
                           )}
                         </Button>
-                      ) : !lock.isAssigned ? (
+                      ) : lock.assignedCount < 6 ? (
                         <Button
                           size="sm"
                           onClick={() => handleAssign(lock)}

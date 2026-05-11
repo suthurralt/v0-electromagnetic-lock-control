@@ -159,47 +159,33 @@ export default function AbrirLockerPage() {
         return
       }
 
-      // Get lock by NFC ID (case-insensitive comparison)
-      const { data: lock, error: lockError } = await supabase
-        .from("locks")
-        .select("id, name, nfc_id")
+      // Check if user has this nfc_id in user_locks (direct lookup)
+      // Using ilike for case-insensitive comparison
+      const { data: userLock, error: lockError } = await supabase
+        .from("user_locks")
+        .select("id, nfc_id")
+        .eq("user_id", user.id)
         .ilike("nfc_id", nfcId)
         .single()
 
-      if (lockError || !lock) {
-        console.error("Lock not found for NFC ID:", nfcId, lockError)
-        
-        const newEntry: AccessLogEntry = {
-          id: Date.now().toString(),
-          lockerId: nfcId,
-          lockerName: "Locker desconocido",
-          timestamp: new Date(),
-          success: false,
-          userId: user.id,
-        }
-        setAccessLog((prev) => [newEntry, ...prev.slice(0, 9)])
-        
-        setStatus("denied")
-        isProcessingRef.current = false
-        setTimeout(() => setStatus("idle"), 3000)
-        return
-      }
+      const hasAccess = !!userLock && !lockError
 
-      // Check if user has an ACTIVE reservation for this lock (returned_at IS NULL)
-      const { data: activeReservation, error: permError } = await supabase
-        .from("user_locks")
-        .select("id")
-        .eq("user_id", user.id)
-        .eq("lock_id", lock.id)
-        .is("returned_at", null)
+      // Get locker name from locks table for display
+      let lockerName = nfcId
+      const { data: lockInfo } = await supabase
+        .from("locks")
+        .select("name")
+        .ilike("nfc_id", nfcId)
         .single()
-
-      const hasAccess = !!activeReservation && !permError
+      
+      if (lockInfo) {
+        lockerName = lockInfo.name
+      }
 
       const newEntry: AccessLogEntry = {
         id: Date.now().toString(),
         lockerId: nfcId,
-        lockerName: lock.name,
+        lockerName: lockerName,
         timestamp: new Date(),
         success: hasAccess,
         userId: user.id,
@@ -211,9 +197,7 @@ export default function AbrirLockerPage() {
         setStatus("granted")
         // TODO: Here you would send the command to ESP8266 to open the lock
         // await fetch('http://ESP8266_IP/open', { method: 'POST' })
-        console.log("[v0] Access GRANTED for lock:", lock.name, "User:", user.id)
       } else {
-        console.log("[v0] Access DENIED - No active reservation for lock:", lock.name, "User:", user.id)
         setStatus("denied")
       }
     } catch (error) {
