@@ -10,6 +10,7 @@ export interface AccessLogEntry {
   timestamp: Date
   success: boolean
   userId: string
+  userEmail?: string
 }
 
 interface AccessLogProps {
@@ -32,8 +33,11 @@ export function AccessLog({ entries }: AccessLogProps) {
     <div className="rounded-xl border border-border bg-card overflow-hidden">
       <div className="border-b border-border bg-muted/50 px-4 py-3">
         <h3 className="font-semibold text-card-foreground">
-          Ultimos Intentos de Acceso
+          Historial de Accesos Compartido
         </h3>
+        <p className="text-xs text-muted-foreground mt-1">
+          Registros de todos los usuarios del locker
+        </p>
       </div>
       <div className="divide-y divide-border">
         {entries.map((entry) => (

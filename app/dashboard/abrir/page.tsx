@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { ArrowLeft, Lock } from "lucide-react"
+import { ArrowLeft, Lock, Loader2 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { NfcScanner } from "@/components/nfc-scanner"
 import { LockerAnimation } from "@/components/locker-animation"
@@ -17,6 +17,12 @@ export default function AbrirLockerPage() {
   const [status, setStatus] = useState<LockerStatus>("idle")
   const [isNfcSupported, setIsNfcSupported] = useState(true)
   const [accessLog, setAccessLog] = useState<AccessLogEntry[]>([])
+  const [loadingLogs, setLoadingLogs] = useState(true)
+
+  // Load access logs from database on mount
+  useEffect(() => {
+    loadAccessLogs()
+  }, [])
 
   useEffect(() => {
     // Check NFC support
@@ -26,6 +32,47 @@ export default function AbrirLockerPage() {
       setIsNfcSupported(false)
     }
   }, [])
+
+  const loadAccessLogs = async () => {
+    setLoadingLogs(true)
+    const supabase = createClient()
+    
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+
+      // Get access logs for all lockers the user has access to
+      // RLS policy ensures user only sees logs for their lockers
+      const { data: logs } = await supabase
+        .from("access_logs")
+        .select(`
+          id,
+          nfc_id,
+          user_id,
+          success,
+          created_at,
+          locks!inner(name)
+        `)
+        .order("created_at", { ascending: false })
+        .limit(20)
+
+      if (logs) {
+        const entries: AccessLogEntry[] = logs.map(log => ({
+          id: log.id,
+          lockerId: log.nfc_id,
+          lockerName: (log.locks as { name: string })?.name || "Locker",
+          timestamp: new Date(log.created_at),
+          success: log.success,
+          userId: log.user_id,
+        }))
+        setAccessLog(entries)
+      }
+    } catch (error) {
+      console.error("Error loading access logs:", error)
+    } finally {
+      setLoadingLogs(false)
+    }
+  }
 
   const handleScan = async () => {
     setStatus("scanning")
@@ -57,26 +104,43 @@ export default function AbrirLockerPage() {
           return
         }
 
-        // Check if user has permission for this lock
+        // Check if user has permission for this lock (using nfc_id)
         const { data: permission } = await supabase
           .from("user_locks")
           .select("id")
           .eq("user_id", user.id)
-          .eq("lock_id", lock.id)
+          .eq("nfc_id", lock.nfc_id)
           .single()
 
+        const accessSuccess = !!permission
+
+        // Save access log to database
+        const { data: savedLog, error: logError } = await supabase
+          .from("access_logs")
+          .insert({
+            nfc_id: lock.nfc_id,
+            user_id: user.id,
+            success: accessSuccess,
+          })
+          .select("id")
+          .single()
+
+        if (logError) {
+          console.error("Error saving access log:", logError)
+        }
+
         const newEntry: AccessLogEntry = {
-          id: Date.now().toString(),
-          lockerId: simulatedNfcId,
+          id: savedLog?.id || Date.now().toString(),
+          lockerId: lock.nfc_id,
           lockerName: lock.name,
           timestamp: new Date(),
-          success: !!permission,
+          success: accessSuccess,
           userId: user.id,
         }
 
-        setAccessLog((prev) => [newEntry, ...prev.slice(0, 9)])
+        setAccessLog((prev) => [newEntry, ...prev.slice(0, 19)])
 
-        if (permission) {
+        if (accessSuccess) {
           setStatus("granted")
           // Here you would send the command to ESP8266
           // await fetch('http://ESP8266_IP/open', { method: 'POST' })
@@ -133,7 +197,13 @@ export default function AbrirLockerPage() {
 
           {/* Access Log */}
           <div className="pt-4">
-            <AccessLog entries={accessLog} />
+            {loadingLogs ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : (
+              <AccessLog entries={accessLog} />
+            )}
           </div>
         </div>
       </div>
