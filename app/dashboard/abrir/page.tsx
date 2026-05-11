@@ -117,7 +117,13 @@ export default function AbrirLockerPage() {
       ndef.onreading = async (event: any) => {
         setStatus("verifying")
 
-        const nfcId = event.serialNumber
+      const nfcId = event.serialNumber
+        .replaceAll(":", "")
+        .toLowerCase()
+
+        console.log("NFC:", nfcId)
+
+        alert(nfcId)
 
         console.log("NFC:", nfcId)
 
