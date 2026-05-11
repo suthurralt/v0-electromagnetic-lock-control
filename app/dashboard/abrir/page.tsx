@@ -14,18 +14,17 @@ type LockerStatus = "idle" | "scanning" | "verifying" | "granted" | "denied"
 
 export default function AbrirLockerPage() {
   const router = useRouter()
+
   const [status, setStatus] = useState<LockerStatus>("idle")
   const [isNfcSupported, setIsNfcSupported] = useState(true)
   const [accessLog, setAccessLog] = useState<AccessLogEntry[]>([])
   const [loadingLogs, setLoadingLogs] = useState(true)
 
-  // Load access logs from database on mount
   useEffect(() => {
     loadAccessLogs()
   }, [])
 
   useEffect(() => {
-    // Check NFC support
     if (typeof window !== "undefined" && "NDEFReader" in window) {
       setIsNfcSupported(true)
     } else {
@@ -35,38 +34,54 @@ export default function AbrirLockerPage() {
 
   const loadAccessLogs = async () => {
     setLoadingLogs(true)
-    const supabase = createClient()
-    
-    try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
 
-      // Get access logs for all lockers the user has access to
-      // RLS policy ensures user only sees logs for their lockers
-      const { data: logs } = await supabase
+    const supabase = createClient()
+
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+
+      if (!user) {
+        setAccessLog([])
+        return
+      }
+
+      const { data: logs, error: logsError } = await supabase
         .from("access_logs")
         .select("id, nfc_id, user_id, success, created_at")
         .order("created_at", { ascending: false })
         .limit(20)
+
+      if (logsError) {
+        console.error("Error loading access logs:", logsError)
+        setAccessLog([])
+        return
+      }
 
       if (!logs || logs.length === 0) {
         setAccessLog([])
         return
       }
 
-      // Get lock names for all unique nfc_ids
-      const uniqueNfcIds = [...new Set(logs.map(l => l.nfc_id))]
-      const { data: locks } = await supabase
+      const uniqueNfcIds = [...new Set(logs.map((log) => log.nfc_id))]
+
+      const { data: locks, error: locksError } = await supabase
         .from("locks")
         .select("nfc_id, name")
         .in("nfc_id", uniqueNfcIds)
 
+      if (locksError) {
+        console.error("Error loading locks:", locksError)
+      }
+
       const lockNameMap: Record<string, string> = {}
-      locks?.forEach(lock => {
+
+      locks?.forEach((lock) => {
         lockNameMap[lock.nfc_id] = lock.name
       })
 
-      const entries: AccessLogEntry[] = logs.map(log => ({
+      const entries: AccessLogEntry[] = logs.map((log) => ({
         id: log.id,
         lockerId: log.nfc_id,
         lockerName: lockNameMap[log.nfc_id] || "Locker",
@@ -74,102 +89,126 @@ export default function AbrirLockerPage() {
         success: log.success,
         userId: log.user_id,
       }))
+
       setAccessLog(entries)
     } catch (error) {
       console.error("Error loading access logs:", error)
+      setAccessLog([])
     } finally {
       setLoadingLogs(false)
     }
   }
 
-  try {
-
-  if (!("NDEFReader" in window)) {
-    setStatus("denied")
-    return
-  }
-
-  const ndef = new NDEFReader()
-
-  await ndef.scan()
-
-  ndef.onreading = async (event) => {
-
-    setStatus("verifying")
-
-    const nfcId = event.serialNumber
-
-    console.log("NFC:", nfcId)
+  const handleScan = async () => {
+    setStatus("scanning")
 
     try {
-
-      const supabase = createClient()
-
-      const { data: { user } } = await supabase.auth.getUser()
-
-      if (!user) {
+      if (typeof window === "undefined" || !("NDEFReader" in window)) {
         setStatus("denied")
+        setTimeout(() => setStatus("idle"), 3000)
         return
       }
 
-      const { data: lock } = await supabase
-        .from("locks")
-        .select("id, name, nfc_id")
-        .eq("nfc_id", nfcId)
-        .single()
+      const NDEFReaderClass = (window as any).NDEFReader
+      const ndef = new NDEFReaderClass()
 
-      if (!lock) {
-        setStatus("denied")
-        return
+      await ndef.scan()
+
+      ndef.onreading = async (event: any) => {
+        setStatus("verifying")
+
+        const nfcId = event.serialNumber
+
+        console.log("NFC:", nfcId)
+
+        const supabase = createClient()
+
+        try {
+          const {
+            data: { user },
+          } = await supabase.auth.getUser()
+
+          if (!user) {
+            setStatus("denied")
+            setTimeout(() => setStatus("idle"), 3000)
+            return
+          }
+
+          const { data: lock, error: lockError } = await supabase
+            .from("locks")
+            .select("id, name, nfc_id")
+            .eq("nfc_id", nfcId)
+            .single()
+
+          if (lockError || !lock) {
+            console.error("Locker not found:", lockError)
+
+            await supabase.from("access_logs").insert({
+              nfc_id: nfcId,
+              user_id: user.id,
+              success: false,
+            })
+
+            const deniedEntry: AccessLogEntry = {
+              id: Date.now().toString(),
+              lockerId: nfcId,
+              lockerName: "Locker no registrado",
+              timestamp: new Date(),
+              success: false,
+              userId: user.id,
+            }
+
+            setAccessLog((prev) => [deniedEntry, ...prev.slice(0, 19)])
+            setStatus("denied")
+            setTimeout(() => setStatus("idle"), 3000)
+            return
+          }
+
+          const { data: permission, error: permissionError } = await supabase
+            .from("user_locks")
+            .select("id")
+            .eq("user_id", user.id)
+            .eq("lock_id", lock.id)
+            .single()
+
+          const success = !!permission && !permissionError
+
+          await supabase.from("access_logs").insert({
+            nfc_id: nfcId,
+            user_id: user.id,
+            success,
+          })
+
+          const newEntry: AccessLogEntry = {
+            id: Date.now().toString(),
+            lockerId: nfcId,
+            lockerName: lock.name,
+            timestamp: new Date(),
+            success,
+            userId: user.id,
+          }
+
+          setAccessLog((prev) => [newEntry, ...prev.slice(0, 19)])
+
+          if (success) {
+            setStatus("granted")
+          } else {
+            setStatus("denied")
+          }
+
+          setTimeout(() => setStatus("idle"), 3000)
+        } catch (error) {
+          console.error("Error verifying NFC:", error)
+          setStatus("denied")
+          setTimeout(() => setStatus("idle"), 3000)
+        }
       }
-
-      const { data: permission } = await supabase
-        .from("user_locks")
-        .select("id")
-        .eq("user_id", user.id)
-        .eq("lock_id", lock.id)
-        .single()
-
-      const newEntry: AccessLogEntry = {
-        id: Date.now().toString(),
-        lockerId: nfcId,
-        lockerName: lock.name,
-        timestamp: new Date(),
-        success: !!permission,
-        userId: user.id,
-      }
-
-      setAccessLog((prev) => [newEntry, ...prev.slice(0, 9)])
-
-      if (permission) {
-
-        setStatus("granted")
-
-      } else {
-
-        setStatus("denied")
-
-      }
-
     } catch (error) {
-
-      console.error(error)
-
+      console.error("Error scanning NFC:", error)
       setStatus("denied")
-
+      setTimeout(() => setStatus("idle"), 3000)
     }
-
-    setTimeout(() => setStatus("idle"), 3000)
-
   }
-
-} catch (error) {
-
-  console.error(error)
-
-  setStatus("denied")
-
-}
 
   return (
     <main className="min-h-screen bg-background">
@@ -180,9 +219,11 @@ export default function AbrirLockerPage() {
             <Button variant="ghost" size="icon" onClick={() => router.push("/dashboard")}>
               <ArrowLeft className="h-5 w-5" />
             </Button>
+
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground">
               <Lock className="h-5 w-5" />
             </div>
+
             <div>
               <h1 className="font-semibold text-card-foreground">Abrir Locker</h1>
               <p className="text-xs text-muted-foreground">Escanea el NFC para abrir</p>
@@ -203,11 +244,7 @@ export default function AbrirLockerPage() {
           <StatusIndicator status={status} />
 
           {/* NFC Scanner */}
-          <NfcScanner
-            status={status}
-            onScan={handleScan}
-            isNfcSupported={isNfcSupported}
-          />
+          <NfcScanner status={status} onScan={handleScan} isNfcSupported={isNfcSupported} />
 
           {/* Access Log */}
           <div className="pt-4">
