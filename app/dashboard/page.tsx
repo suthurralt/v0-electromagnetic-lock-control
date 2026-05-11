@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { LogOut, Lock, Unlock, Plus } from "lucide-react"
+import { LogOut, Lock, Unlock, Plus, History } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 
 export default function DashboardPage() {
@@ -83,6 +83,16 @@ export default function DashboardPage() {
             >
               <Plus className="h-6 w-6" />
               Pedir Locker
+            </Button>
+
+            <Button
+              variant="outline"
+              size="lg"
+              className="w-full h-20 text-lg flex items-center justify-center gap-3"
+              onClick={() => router.push("/dashboard/historial")}
+            >
+              <History className="h-6 w-6" />
+              Historial de Accesos
             </Button>
           </div>
         </div>

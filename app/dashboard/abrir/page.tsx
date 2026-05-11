@@ -165,6 +165,14 @@ export default function AbrirLockerPage() {
 
       setAccessLog((prev) => [newEntry, ...prev.slice(0, 9)])
 
+      // Save access log to database
+      await supabase.from("access_logs").insert({
+        user_id: user.id,
+        nfc_id: nfcId,
+        locker_name: lockerName,
+        success: hasAccess,
+      })
+
       if (hasAccess) {
         setStatus("granted")
         // TODO: Here you would send the command to ESP8266 to open the lock
