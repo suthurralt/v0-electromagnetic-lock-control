@@ -16,44 +16,62 @@ export default function AbrirLockerPage() {
   const router = useRouter()
   const [status, setStatus] = useState<LockerStatus>("idle")
   const [isNfcSupported, setIsNfcSupported] = useState(true)
+  const [isNfcActive, setIsNfcActive] = useState(false)
   const [accessLog, setAccessLog] = useState<AccessLogEntry[]>([])
   const [lastScannedId, setLastScannedId] = useState<string>("")
+  const [errorMessage, setErrorMessage] = useState<string>("")
   const ndefReaderRef = useRef<NDEFReader | null>(null)
   const isProcessingRef = useRef(false)
+  const abortControllerRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
-    // Check NFC support and auto-start scanning
-    if (typeof window !== "undefined" && "NDEFReader" in window) {
-      setIsNfcSupported(true)
-      // Auto-start NFC scanning so it's ready before user taps
-      startNfcScanAuto()
-    } else {
-      setIsNfcSupported(false)
+    // Check NFC support
+    if (typeof window !== "undefined") {
+      if ("NDEFReader" in window) {
+        setIsNfcSupported(true)
+      } else {
+        setIsNfcSupported(false)
+        setErrorMessage("Tu navegador no soporta NFC. Usa Chrome en Android.")
+      }
     }
 
     // Cleanup NFC reader on unmount
     return () => {
-      if (ndefReaderRef.current) {
-        ndefReaderRef.current = null
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Auto-start version that runs on page load (doesn't change status to scanning initially)
-  const startNfcScanAuto = async () => {
+  // Start NFC scan - requires user interaction (button click)
+  const startNfcScan = async () => {
     if (!("NDEFReader" in window)) {
       setIsNfcSupported(false)
+      setErrorMessage("Tu navegador no soporta NFC. Usa Chrome en Android.")
       return
     }
 
+    // If already active, just update status
+    if (isNfcActive && ndefReaderRef.current) {
+      setStatus("scanning")
+      setErrorMessage("")
+      return
+    }
+
+    setStatus("scanning")
+    setErrorMessage("")
+    isProcessingRef.current = false
+
     try {
+      // Create abort controller for cleanup
+      abortControllerRef.current = new AbortController()
+      
       // @ts-expect-error - NDEFReader is not in TypeScript types yet
       const ndef = new NDEFReader()
       ndefReaderRef.current = ndef
       
-      await ndef.scan()
-      // NFC is now listening in the background
+      await ndef.scan({ signal: abortControllerRef.current.signal })
+      setIsNfcActive(true)
 
       ndef.addEventListener("reading", async ({ serialNumber }: { serialNumber: string }) => {
         // Prevent multiple simultaneous processing
@@ -77,69 +95,23 @@ export default function AbrirLockerPage() {
       })
 
       ndef.addEventListener("readingerror", () => {
-        console.error("Error reading NFC tag")
+        setErrorMessage("Error al leer el tag NFC. Intenta de nuevo.")
         setStatus("denied")
         isProcessingRef.current = false
         setTimeout(() => setStatus("idle"), 3000)
       })
     } catch (error) {
-      console.error("Error auto-starting NFC scan:", error)
-      // Don't show error on auto-start, user can manually trigger
-    }
-  }
-
-  // Manual start version (button click) - sets status to scanning
-  const startNfcScan = async () => {
-    if (!("NDEFReader" in window)) {
-      setIsNfcSupported(false)
-      return
-    }
-
-    // If already scanning, don't restart
-    if (ndefReaderRef.current) {
-      setStatus("scanning")
-      return
-    }
-
-    setStatus("scanning")
-    isProcessingRef.current = false
-
-    try {
-      // @ts-expect-error - NDEFReader is not in TypeScript types yet
-      const ndef = new NDEFReader()
-      ndefReaderRef.current = ndef
-      
-      await ndef.scan()
-
-      ndef.addEventListener("reading", async ({ serialNumber }: { serialNumber: string }) => {
-        // Prevent multiple simultaneous processing
-        if (isProcessingRef.current) return
-        isProcessingRef.current = true
-
-        // Convert serial number to format XX:XX:XX:XX:XX:XX:XX
-        let formattedId: string
-        if (serialNumber.includes(":")) {
-          formattedId = serialNumber.toUpperCase()
-        } else {
-          formattedId = serialNumber
-            .match(/.{1,2}/g)
-            ?.join(":")
-            .toUpperCase() || serialNumber.toUpperCase()
-        }
-
-        setLastScannedId(formattedId)
-        await verifyNfcAccess(formattedId)
-      })
-
-      ndef.addEventListener("readingerror", () => {
-        console.error("Error reading NFC tag")
-        setStatus("denied")
-        isProcessingRef.current = false
-        setTimeout(() => setStatus("idle"), 3000)
-      })
-    } catch (error) {
-      console.error("Error starting NFC scan:", error)
+      const err = error as Error
+      if (err.name === "NotAllowedError") {
+        setErrorMessage("Permiso NFC denegado. Permite el acceso a NFC en tu navegador.")
+      } else if (err.name === "NotSupportedError") {
+        setErrorMessage("NFC no esta disponible en este dispositivo.")
+        setIsNfcSupported(false)
+      } else {
+        setErrorMessage(`Error: ${err.message}`)
+      }
       setStatus("denied")
+      setIsNfcActive(false)
       setTimeout(() => setStatus("idle"), 3000)
     }
   }
@@ -246,7 +218,9 @@ export default function AbrirLockerPage() {
             status={status}
             onScan={startNfcScan}
             isNfcSupported={isNfcSupported}
+            isNfcActive={isNfcActive}
             lastScannedId={lastScannedId}
+            errorMessage={errorMessage}
           />
 
           {/* Access Log */}

@@ -10,13 +10,15 @@ interface NfcScannerProps {
   status: LockerStatus
   onScan: () => void
   isNfcSupported: boolean
+  isNfcActive?: boolean
   lastScannedId?: string
+  errorMessage?: string
 }
 
-export function NfcScanner({ status, onScan, isNfcSupported, lastScannedId }: NfcScannerProps) {
+export function NfcScanner({ status, onScan, isNfcSupported, isNfcActive, lastScannedId, errorMessage }: NfcScannerProps) {
   const isScanning = status === "scanning"
   const isProcessing = status === "verifying"
-  const isDisabled = isScanning || isProcessing
+  const isDisabled = isProcessing // Allow clicking while scanning to re-activate
 
   return (
     <div className="flex flex-col items-center gap-6">
@@ -65,27 +67,36 @@ export function NfcScanner({ status, onScan, isNfcSupported, lastScannedId }: Nf
         </div>
       )}
 
+      {/* Error Message */}
+      {errorMessage && (
+        <div className="text-center p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
+          <p className="text-sm text-destructive">{errorMessage}</p>
+        </div>
+      )}
+
       {/* Instructions */}
       <div className="text-center space-y-2">
-        {isNfcSupported && status === "idle" && (
+        {isNfcActive && (status === "scanning" || status === "idle") && (
           <div className="flex items-center justify-center gap-2 text-green-600">
             <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-            <p className="text-sm font-medium">NFC listo - Acerca tu celular al sticker</p>
+            <p className="text-sm font-medium">NFC activo - Acerca tu celular al sticker</p>
           </div>
         )}
         <p className="text-sm text-muted-foreground">
           {isScanning
-            ? "Mantene el telefono cerca del sticker NFC..."
+            ? "Acerca el telefono al sticker NFC..."
             : isProcessing
             ? "Verificando acceso..."
-            : "El lector NFC esta activo automaticamente"}
+            : isNfcActive
+            ? "NFC escuchando, acerca el telefono al locker"
+            : "Presiona el boton para activar el lector NFC"}
         </p>
       </div>
 
-      {/* Scan Button - now secondary, since NFC auto-starts */}
+      {/* Scan Button */}
       <Button
         size="lg"
-        variant={status === "idle" ? "outline" : "default"}
+        variant={isNfcActive ? "outline" : "default"}
         className={cn(
           "h-14 w-full max-w-xs gap-2 text-lg font-semibold transition-all duration-300",
           isScanning && "animate-pulse"
@@ -103,10 +114,15 @@ export function NfcScanner({ status, onScan, isNfcSupported, lastScannedId }: Nf
             <div className="h-5 w-5 animate-spin rounded-full border-2 border-current border-t-transparent" />
             Verificando...
           </>
+        ) : isNfcActive ? (
+          <>
+            <Nfc className="h-5 w-5" />
+            NFC Activo
+          </>
         ) : (
           <>
             <Nfc className="h-5 w-5" />
-            Reactivar Escaneo
+            Activar NFC
           </>
         )}
       </Button>
@@ -114,7 +130,7 @@ export function NfcScanner({ status, onScan, isNfcSupported, lastScannedId }: Nf
       {/* NFC Support Warning */}
       {!isNfcSupported && (
         <p className="text-center text-sm text-destructive">
-          Tu dispositivo no soporta NFC o no esta habilitado
+          Tu dispositivo no soporta NFC. Usa Chrome en Android.
         </p>
       )}
     </div>
