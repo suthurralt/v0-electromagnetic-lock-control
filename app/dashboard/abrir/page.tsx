@@ -22,9 +22,11 @@ export default function AbrirLockerPage() {
   const isProcessingRef = useRef(false)
 
   useEffect(() => {
-    // Check NFC support
+    // Check NFC support and auto-start scanning
     if (typeof window !== "undefined" && "NDEFReader" in window) {
       setIsNfcSupported(true)
+      // Auto-start NFC scanning so it's ready before user taps
+      startNfcScanAuto()
     } else {
       setIsNfcSupported(false)
     }
@@ -32,15 +34,70 @@ export default function AbrirLockerPage() {
     // Cleanup NFC reader on unmount
     return () => {
       if (ndefReaderRef.current) {
-        // NDEFReader doesn't have a stop method, but we can abort by losing reference
         ndefReaderRef.current = null
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Auto-start version that runs on page load (doesn't change status to scanning initially)
+  const startNfcScanAuto = async () => {
+    if (!("NDEFReader" in window)) {
+      setIsNfcSupported(false)
+      return
+    }
+
+    try {
+      // @ts-expect-error - NDEFReader is not in TypeScript types yet
+      const ndef = new NDEFReader()
+      ndefReaderRef.current = ndef
+      
+      await ndef.scan()
+      // NFC is now listening in the background
+
+      ndef.addEventListener("reading", async ({ serialNumber }: { serialNumber: string }) => {
+        // Prevent multiple simultaneous processing
+        if (isProcessingRef.current) return
+        isProcessingRef.current = true
+
+        // Convert serial number to format XX:XX:XX:XX:XX:XX:XX
+        let formattedId: string
+        if (serialNumber.includes(":")) {
+          formattedId = serialNumber.toUpperCase()
+        } else {
+          formattedId = serialNumber
+            .match(/.{1,2}/g)
+            ?.join(":")
+            .toUpperCase() || serialNumber.toUpperCase()
+        }
+
+        setLastScannedId(formattedId)
+        setStatus("verifying")
+        await verifyNfcAccess(formattedId)
+      })
+
+      ndef.addEventListener("readingerror", () => {
+        console.error("Error reading NFC tag")
+        setStatus("denied")
+        isProcessingRef.current = false
+        setTimeout(() => setStatus("idle"), 3000)
+      })
+    } catch (error) {
+      console.error("Error auto-starting NFC scan:", error)
+      // Don't show error on auto-start, user can manually trigger
+    }
+  }
+
+  // Manual start version (button click) - sets status to scanning
   const startNfcScan = async () => {
     if (!("NDEFReader" in window)) {
       setIsNfcSupported(false)
+      return
+    }
+
+    // If already scanning, don't restart
+    if (ndefReaderRef.current) {
+      setStatus("scanning")
       return
     }
 
@@ -128,32 +185,35 @@ export default function AbrirLockerPage() {
         return
       }
 
-      // Check if user has permission for this lock
-      const { data: permission, error: permError } = await supabase
+      // Check if user has an ACTIVE reservation for this lock (returned_at IS NULL)
+      const { data: activeReservation, error: permError } = await supabase
         .from("user_locks")
         .select("id")
         .eq("user_id", user.id)
         .eq("lock_id", lock.id)
+        .is("returned_at", null)
         .single()
+
+      const hasAccess = !!activeReservation && !permError
 
       const newEntry: AccessLogEntry = {
         id: Date.now().toString(),
         lockerId: nfcId,
         lockerName: lock.name,
         timestamp: new Date(),
-        success: !!permission && !permError,
+        success: hasAccess,
         userId: user.id,
       }
 
       setAccessLog((prev) => [newEntry, ...prev.slice(0, 9)])
 
-      if (permission && !permError) {
+      if (hasAccess) {
         setStatus("granted")
         // TODO: Here you would send the command to ESP8266 to open the lock
         // await fetch('http://ESP8266_IP/open', { method: 'POST' })
-        console.log("Access GRANTED for lock:", lock.name)
+        console.log("[v0] Access GRANTED for lock:", lock.name, "User:", user.id)
       } else {
-        console.error("No permission for this lock:", lock.name)
+        console.log("[v0] Access DENIED - No active reservation for lock:", lock.name, "User:", user.id)
         setStatus("denied")
       }
     } catch (error) {

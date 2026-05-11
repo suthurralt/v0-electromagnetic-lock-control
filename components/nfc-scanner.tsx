@@ -66,17 +66,26 @@ export function NfcScanner({ status, onScan, isNfcSupported, lastScannedId }: Nf
       )}
 
       {/* Instructions */}
-      <div className="text-center">
+      <div className="text-center space-y-2">
+        {isNfcSupported && status === "idle" && (
+          <div className="flex items-center justify-center gap-2 text-green-600">
+            <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+            <p className="text-sm font-medium">NFC listo - Acerca tu celular al sticker</p>
+          </div>
+        )}
         <p className="text-sm text-muted-foreground">
           {isScanning
             ? "Mantene el telefono cerca del sticker NFC..."
-            : "Presiona el boton y acerca tu telefono al locker"}
+            : isProcessing
+            ? "Verificando acceso..."
+            : "El lector NFC esta activo automaticamente"}
         </p>
       </div>
 
-      {/* Scan Button */}
+      {/* Scan Button - now secondary, since NFC auto-starts */}
       <Button
         size="lg"
+        variant={status === "idle" ? "outline" : "default"}
         className={cn(
           "h-14 w-full max-w-xs gap-2 text-lg font-semibold transition-all duration-300",
           isScanning && "animate-pulse"
@@ -91,13 +100,13 @@ export function NfcScanner({ status, onScan, isNfcSupported, lastScannedId }: Nf
           </>
         ) : isProcessing ? (
           <>
-            <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
+            <div className="h-5 w-5 animate-spin rounded-full border-2 border-current border-t-transparent" />
             Verificando...
           </>
         ) : (
           <>
             <Nfc className="h-5 w-5" />
-            Escanear Locker
+            Reactivar Escaneo
           </>
         )}
       </Button>
