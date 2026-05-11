@@ -10,9 +10,10 @@ interface NfcScannerProps {
   status: LockerStatus
   onScan: () => void
   isNfcSupported: boolean
+  lastScannedId?: string
 }
 
-export function NfcScanner({ status, onScan, isNfcSupported }: NfcScannerProps) {
+export function NfcScanner({ status, onScan, isNfcSupported, lastScannedId }: NfcScannerProps) {
   const isScanning = status === "scanning"
   const isProcessing = status === "verifying"
   const isDisabled = isScanning || isProcessing
@@ -55,6 +56,14 @@ export function NfcScanner({ status, onScan, isNfcSupported }: NfcScannerProps) 
           <Nfc className="h-4 w-4" />
         </div>
       </div>
+
+      {/* Last scanned ID */}
+      {lastScannedId && (
+        <div className="text-center p-3 bg-muted rounded-lg">
+          <p className="text-xs text-muted-foreground mb-1">NFC ID escaneado:</p>
+          <p className="font-mono text-sm text-foreground">{lastScannedId}</p>
+        </div>
+      )}
 
       {/* Instructions */}
       <div className="text-center">

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { ArrowLeft, Lock } from "lucide-react"
@@ -17,6 +17,9 @@ export default function AbrirLockerPage() {
   const [status, setStatus] = useState<LockerStatus>("idle")
   const [isNfcSupported, setIsNfcSupported] = useState(true)
   const [accessLog, setAccessLog] = useState<AccessLogEntry[]>([])
+  const [lastScannedId, setLastScannedId] = useState<string>("")
+  const ndefReaderRef = useRef<NDEFReader | null>(null)
+  const isProcessingRef = useRef(false)
 
   useEffect(() => {
     // Check NFC support
@@ -25,72 +28,142 @@ export default function AbrirLockerPage() {
     } else {
       setIsNfcSupported(false)
     }
+
+    // Cleanup NFC reader on unmount
+    return () => {
+      if (ndefReaderRef.current) {
+        // NDEFReader doesn't have a stop method, but we can abort by losing reference
+        ndefReaderRef.current = null
+      }
+    }
   }, [])
 
-  const handleScan = async () => {
+  const startNfcScan = async () => {
+    if (!("NDEFReader" in window)) {
+      setIsNfcSupported(false)
+      return
+    }
+
     setStatus("scanning")
+    isProcessingRef.current = false
 
-    // Simulate NFC scan for demo - using the prototype NFC ID
-    setTimeout(async () => {
-      const simulatedNfcId = "NFC-PROTO-001-ABC123"
+    try {
+      // @ts-expect-error - NDEFReader is not in TypeScript types yet
+      const ndef = new NDEFReader()
+      ndefReaderRef.current = ndef
       
-      setStatus("verifying")
+      await ndef.scan()
 
-      try {
-        const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
+      ndef.addEventListener("reading", async ({ serialNumber }: { serialNumber: string }) => {
+        // Prevent multiple simultaneous processing
+        if (isProcessingRef.current) return
+        isProcessingRef.current = true
 
-        if (!user) {
-          setStatus("denied")
-          return
-        }
-
-        // Get lock by NFC ID
-        const { data: lock } = await supabase
-          .from("locks")
-          .select("id, name, nfc_id")
-          .eq("nfc_id", simulatedNfcId)
-          .single()
-
-        if (!lock) {
-          setStatus("denied")
-          return
-        }
-
-        // Check if user has permission for this lock
-        const { data: permission } = await supabase
-          .from("user_locks")
-          .select("id")
-          .eq("user_id", user.id)
-          .eq("lock_id", lock.id)
-          .single()
-
-        const newEntry: AccessLogEntry = {
-          id: Date.now().toString(),
-          lockerId: simulatedNfcId,
-          lockerName: lock.name,
-          timestamp: new Date(),
-          success: !!permission,
-          userId: user.id,
-        }
-
-        setAccessLog((prev) => [newEntry, ...prev.slice(0, 9)])
-
-        if (permission) {
-          setStatus("granted")
-          // Here you would send the command to ESP8266
-          // await fetch('http://ESP8266_IP/open', { method: 'POST' })
+        // Convert serial number to format XX:XX:XX:XX:XX:XX:XX
+        let formattedId: string
+        if (serialNumber.includes(":")) {
+          formattedId = serialNumber.toUpperCase()
         } else {
-          setStatus("denied")
+          formattedId = serialNumber
+            .match(/.{1,2}/g)
+            ?.join(":")
+            .toUpperCase() || serialNumber.toUpperCase()
         }
-      } catch (error) {
-        console.error("Error verifying access:", error)
+
+        setLastScannedId(formattedId)
+        await verifyNfcAccess(formattedId)
+      })
+
+      ndef.addEventListener("readingerror", () => {
+        console.error("Error reading NFC tag")
         setStatus("denied")
+        isProcessingRef.current = false
+        setTimeout(() => setStatus("idle"), 3000)
+      })
+    } catch (error) {
+      console.error("Error starting NFC scan:", error)
+      setStatus("denied")
+      setTimeout(() => setStatus("idle"), 3000)
+    }
+  }
+
+  const verifyNfcAccess = async (nfcId: string) => {
+    setStatus("verifying")
+
+    try {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+
+      if (!user) {
+        console.error("No user logged in")
+        setStatus("denied")
+        isProcessingRef.current = false
+        setTimeout(() => setStatus("idle"), 3000)
+        return
       }
 
-      // Reset after 3 seconds
-      setTimeout(() => setStatus("idle"), 3000)
-    }, 2000)
+      // Get lock by NFC ID (case-insensitive comparison)
+      const { data: lock, error: lockError } = await supabase
+        .from("locks")
+        .select("id, name, nfc_id")
+        .ilike("nfc_id", nfcId)
+        .single()
+
+      if (lockError || !lock) {
+        console.error("Lock not found for NFC ID:", nfcId, lockError)
+        
+        const newEntry: AccessLogEntry = {
+          id: Date.now().toString(),
+          lockerId: nfcId,
+          lockerName: "Locker desconocido",
+          timestamp: new Date(),
+          success: false,
+          userId: user.id,
+        }
+        setAccessLog((prev) => [newEntry, ...prev.slice(0, 9)])
+        
+        setStatus("denied")
+        isProcessingRef.current = false
+        setTimeout(() => setStatus("idle"), 3000)
+        return
+      }
+
+      // Check if user has permission for this lock
+      const { data: permission, error: permError } = await supabase
+        .from("user_locks")
+        .select("id")
+        .eq("user_id", user.id)
+        .eq("lock_id", lock.id)
+        .single()
+
+      const newEntry: AccessLogEntry = {
+        id: Date.now().toString(),
+        lockerId: nfcId,
+        lockerName: lock.name,
+        timestamp: new Date(),
+        success: !!permission && !permError,
+        userId: user.id,
+      }
+
+      setAccessLog((prev) => [newEntry, ...prev.slice(0, 9)])
+
+      if (permission && !permError) {
+        setStatus("granted")
+        // TODO: Here you would send the command to ESP8266 to open the lock
+        // await fetch('http://ESP8266_IP/open', { method: 'POST' })
+        console.log("Access GRANTED for lock:", lock.name)
+      } else {
+        console.error("No permission for this lock:", lock.name)
+        setStatus("denied")
+      }
+    } catch (error) {
+      console.error("Error verifying access:", error)
+      setStatus("denied")
+    }
+
+    isProcessingRef.current = false
+    // Reset after 3 seconds
+    setTimeout(() => setStatus("idle"), 3000)
   }
 
   return (
@@ -127,8 +200,9 @@ export default function AbrirLockerPage() {
           {/* NFC Scanner */}
           <NfcScanner
             status={status}
-            onScan={handleScan}
+            onScan={startNfcScan}
             isNfcSupported={isNfcSupported}
+            lastScannedId={lastScannedId}
           />
 
           {/* Access Log */}
