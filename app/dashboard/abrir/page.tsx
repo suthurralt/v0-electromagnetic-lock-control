@@ -24,6 +24,37 @@ export default function AbrirLockerPage() {
   const isProcessingRef = useRef(false)
   const abortControllerRef = useRef<AbortController | null>(null)
 
+  // Load access logs from database on mount
+  useEffect(() => {
+    const loadAccessLogs = async () => {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      
+      if (!user) return
+
+      const { data: logs } = await supabase
+        .from("access_logs")
+        .select("id, nfc_id, locker_name, success, created_at")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(10)
+
+      if (logs) {
+        const entries: AccessLogEntry[] = logs.map(log => ({
+          id: log.id,
+          lockerId: log.nfc_id,
+          lockerName: log.locker_name,
+          timestamp: new Date(log.created_at),
+          success: log.success,
+          userId: user.id,
+        }))
+        setAccessLog(entries)
+      }
+    }
+
+    loadAccessLogs()
+  }, [])
+
   useEffect(() => {
     // Check NFC support
     if (typeof window !== "undefined") {
@@ -154,11 +185,23 @@ export default function AbrirLockerPage() {
         lockerName = lockInfo.name
       }
 
+      // Save access log to database
+      const { data: savedLog } = await supabase
+        .from("access_logs")
+        .insert({
+          user_id: user.id,
+          nfc_id: nfcId,
+          locker_name: lockerName,
+          success: hasAccess,
+        })
+        .select("id, created_at")
+        .single()
+
       const newEntry: AccessLogEntry = {
-        id: Date.now().toString(),
+        id: savedLog?.id || Date.now().toString(),
         lockerId: nfcId,
         lockerName: lockerName,
-        timestamp: new Date(),
+        timestamp: savedLog ? new Date(savedLog.created_at) : new Date(),
         success: hasAccess,
         userId: user.id,
       }
