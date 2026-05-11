@@ -45,28 +45,36 @@ export default function AbrirLockerPage() {
       // RLS policy ensures user only sees logs for their lockers
       const { data: logs } = await supabase
         .from("access_logs")
-        .select(`
-          id,
-          nfc_id,
-          user_id,
-          success,
-          created_at,
-          locks!inner(name)
-        `)
+        .select("id, nfc_id, user_id, success, created_at")
         .order("created_at", { ascending: false })
         .limit(20)
 
-      if (logs) {
-        const entries: AccessLogEntry[] = logs.map(log => ({
-          id: log.id,
-          lockerId: log.nfc_id,
-          lockerName: (log.locks as { name: string })?.name || "Locker",
-          timestamp: new Date(log.created_at),
-          success: log.success,
-          userId: log.user_id,
-        }))
-        setAccessLog(entries)
+      if (!logs || logs.length === 0) {
+        setAccessLog([])
+        return
       }
+
+      // Get lock names for all unique nfc_ids
+      const uniqueNfcIds = [...new Set(logs.map(l => l.nfc_id))]
+      const { data: locks } = await supabase
+        .from("locks")
+        .select("nfc_id, name")
+        .in("nfc_id", uniqueNfcIds)
+
+      const lockNameMap: Record<string, string> = {}
+      locks?.forEach(lock => {
+        lockNameMap[lock.nfc_id] = lock.name
+      })
+
+      const entries: AccessLogEntry[] = logs.map(log => ({
+        id: log.id,
+        lockerId: log.nfc_id,
+        lockerName: lockNameMap[log.nfc_id] || "Locker",
+        timestamp: new Date(log.created_at),
+        success: log.success,
+        userId: log.user_id,
+      }))
+      setAccessLog(entries)
     } catch (error) {
       console.error("Error loading access logs:", error)
     } finally {
