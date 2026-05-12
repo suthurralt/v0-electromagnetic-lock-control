@@ -99,11 +99,11 @@ export default function HistorialPage() {
             <Button variant="ghost" size="icon" onClick={() => router.push("/dashboard")}>
               <ArrowLeft className="h-5 w-5" />
             </Button>
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-white">
               <History className="h-5 w-5" />
             </div>
             <div>
-              <h1 className="font-semibold text-card-foreground">Historial de Accesos</h1>
+              <h1 className="font-semibold text-card-foreground">Historial de accesos</h1>
               <p className="text-xs text-muted-foreground">Registro de aperturas</p>
             </div>
           </div>
@@ -123,10 +123,10 @@ export default function HistorialPage() {
             </div>
           ) : logs.length === 0 ? (
             <div className="rounded-xl border border-border bg-card p-8 text-center">
-              <Clock className="mx-auto h-12 w-12 text-muted-foreground" />
+              <Clock className="mx-auto h-12 w-12 text-blue-600" />
               <h3 className="mt-4 font-semibold text-card-foreground">Sin registros</h3>
               <p className="mt-2 text-sm text-muted-foreground">
-                Aun no tienes registros de acceso. Los registros apareceran aqui cuando uses tu locker.
+                Aún no tienes registros de acceso. Los registros aparecerán aquí cuando uses tu locker.
               </p>
               <Button 
                 variant="outline" 
@@ -134,14 +134,14 @@ export default function HistorialPage() {
                 onClick={() => router.push("/dashboard/abrir")}
               >
                 <Lock className="h-4 w-4 mr-2" />
-                Ir a Abrir Locker
+                Ir a abrir locker
               </Button>
             </div>
           ) : (
             <div className="rounded-xl border border-border bg-card overflow-hidden">
-              <div className="border-b border-border bg-muted/50 px-4 py-3 flex items-center justify-between">
+              <div className="border-b border-border bg-blue-50 px-4 py-3 flex items-center justify-between">
                 <h3 className="font-semibold text-card-foreground">
-                  Registros de Acceso
+                  Registros de acceso
                 </h3>
                 <span className="text-xs text-muted-foreground">
                   {logs.length} registros
@@ -166,9 +166,12 @@ export default function HistorialPage() {
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-card-foreground truncate">
-                        {entry.locker_name}
+                      {/* Persona que abrió */}
+                      <p className="font-semibold text-card-foreground truncate">
+                        {entry.user_id}
                       </p>
+
+                      {/* NFC ID */}
                       <p className="text-xs text-muted-foreground">
                         NFC: {entry.nfc_id}
                       </p>
@@ -177,12 +180,16 @@ export default function HistorialPage() {
                       <p
                         className={cn(
                           "text-sm font-medium",
-                          entry.success ? "text-accent" : "text-destructive"
+                          entry.success ? "text-green-600" : "text-red-600"
                         )}
                       >
                         {entry.success ? "Acceso concedido" : "Acceso denegado"}
                       </p>
-                      <p className="text-xs text-muted-foreground" title={formatFullDate(entry.created_at)}>
+
+                      <p
+                        className="text-xs text-gray-500"
+                        title={formatFullDate(entry.created_at)}
+                      >
                         {formatDate(entry.created_at)}
                       </p>
                     </div>

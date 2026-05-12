@@ -199,11 +199,11 @@ export default function AbrirLockerPage() {
             <Button variant="ghost" size="icon" onClick={() => router.push("/dashboard")}>
               <ArrowLeft className="h-5 w-5" />
             </Button>
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-white">              
               <Lock className="h-5 w-5" />
             </div>
             <div>
-              <h1 className="font-semibold text-card-foreground">Abrir Locker</h1>
+              <h1 className="font-semibold text-card-foreground">Abrir locker</h1>
               <p className="text-xs text-muted-foreground">Escanea el NFC para abrir</p>
             </div>
           </div>

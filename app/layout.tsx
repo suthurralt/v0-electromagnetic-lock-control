@@ -7,7 +7,7 @@ const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'SmartLocker - Panel de Control',
+  title: 'ITBA Lockers - Panel de Control',
   description: 'Sistema de control de lockers inteligentes con NFC',
   generator: 'v0.app',
   icons: {

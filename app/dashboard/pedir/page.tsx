@@ -152,12 +152,12 @@ export default function PedirLockerPage() {
             <Button variant="ghost" size="icon" onClick={() => router.push("/dashboard")}>
               <ArrowLeft className="h-5 w-5" />
             </Button>
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-white">              
               <Lock className="h-5 w-5" />
             </div>
             <div>
-              <h1 className="font-semibold text-card-foreground">Pedir Locker</h1>
-              <p className="text-xs text-muted-foreground">Selecciona un locker disponible</p>
+              <h1 className="font-semibold text-card-foreground">Pedir locker</h1>
+              <p className="text-xs text-muted-foreground">Seleccioná un locker disponible</p>
             </div>
           </div>
         </div>
@@ -202,14 +202,8 @@ export default function PedirLockerPage() {
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <div className={`flex h-12 w-12 items-center justify-center rounded-lg ${
-                          lock.isAssignedToMe
-                            ? "bg-primary text-primary-foreground"
-                            : lock.assignedCount >= 6
-                            ? "bg-muted text-muted-foreground"
-                            : "bg-secondary text-secondary-foreground"
-                        }`}>
-                          <Lock className="h-6 w-6" />
+                        <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-sky-50">
+                          <Lock className="h-6 w-6 text-sky-600" />
                         </div>
                         <div>
                           <h3 className="font-medium text-foreground">{lock.name}</h3>

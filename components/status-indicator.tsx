@@ -33,14 +33,14 @@ const statusConfig = {
   },
   granted: {
     icon: CheckCircle2,
-    label: "Acceso Concedido",
-    description: "Locker abierto - se cerrara automaticamente",
+    label: "Acceso concedido",
+    description: "Locker abierto - se cerrará automaticamente",
     color: "text-accent",
     bgColor: "bg-accent/10",
   },
   denied: {
     icon: XCircle,
-    label: "Acceso Denegado",
+    label: "Acceso denegado",
     description: "No tenes permisos para este locker",
     color: "text-destructive",
     bgColor: "bg-destructive/10",
