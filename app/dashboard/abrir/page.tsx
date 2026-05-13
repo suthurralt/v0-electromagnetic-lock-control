@@ -12,6 +12,10 @@ import { AccessLog, type AccessLogEntry } from "@/components/access-log"
 
 type LockerStatus = "idle" | "scanning" | "verifying" | "granted" | "denied"
 
+const normalizeNfcId = (id: string) => {
+  return id.replace(/:/g, "").toLowerCase()
+}
+
 export default function AbrirLockerPage() {
   const router = useRouter()
   const [status, setStatus] = useState<LockerStatus>("idle")
@@ -89,9 +93,12 @@ export default function AbrirLockerPage() {
             .toUpperCase() || serialNumber.toUpperCase()
         }
 
-        setLastScannedId(formattedId)
+        const normalizedId = normalizeNfcId(formattedId)
+
+        setLastScannedId(normalizedId)
         setStatus("verifying")
-        await verifyNfcAccess(formattedId)
+        await verifyNfcAccess(normalizedId)
+
       })
 
       ndef.addEventListener("readingerror", () => {

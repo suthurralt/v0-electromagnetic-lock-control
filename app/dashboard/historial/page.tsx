@@ -24,6 +24,7 @@ export default function HistorialPage() {
 
   const fetchLogs = async () => {
     const supabase = createClient()
+
     const { data: { user } } = await supabase.auth.getUser()
 
     if (!user) {
@@ -31,10 +32,25 @@ export default function HistorialPage() {
       return
     }
 
+    // 1. NFC del Locker 1
+    const { data: nfcs, error: nfcsError } = await supabase
+      .from("locks") // 👈 ACÁ ponés tu tabla real
+      .select("nfc_id")
+      .eq("name", "Locker 001")
+
+    if (nfcsError) {
+      console.error("Error fetching NFCs:", nfcsError)
+      setLoading(false)
+      return
+    }
+
+    const nfcIds = nfcs?.map(n => n.nfc_id) || []
+
+    // 2. Logs filtrados
     const { data, error } = await supabase
       .from("access_logs")
       .select("*")
-      .eq("user_id", user.id)
+      .in("nfc_id", nfcIds)
       .order("created_at", { ascending: false })
       .limit(50)
 
@@ -43,8 +59,10 @@ export default function HistorialPage() {
     } else {
       setLogs(data || [])
     }
+
     setLoading(false)
     setRefreshing(false)
+
   }
 
   useEffect(() => {
