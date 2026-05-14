@@ -23,47 +23,49 @@ export default function HistorialPage() {
   const [refreshing, setRefreshing] = useState(false)
 
   const fetchLogs = async () => {
-    const supabase = createClient()
+  const supabase = createClient()
 
-    const { data: { user } } = await supabase.auth.getUser()
+  const { data: { user } } = await supabase.auth.getUser()
 
-    if (!user) {
-      router.push("/login")
-      return
-    }
+  if (!user) {
+    router.push("/login")
+    return
+  }
 
-   // Obtener lockers asignados al usuario
-    const { data: userLocks, error: userLocksError } = await supabase
-      .from("user_locks")
-      .select("nfc_id")
-      .eq("user_id", user.id)
-    
-    if (userLocksError) {
-      console.error("Error fetching user lockers:", userLocksError)
-      setLoading(false)
-      return
-    }
-    
-    const nfcIds = userLocks?.map(lock => lock.nfc_id) || []
+  // 1. Buscar el locker asignado al usuario
+  const { data: userLock, error: userLockError } = await supabase
+    .from("user_locks")
+    .select("nfc_id")
+    .eq("user_id", user.id)
+    .single()
 
-    // 2. Logs filtrados
-    const { data, error } = await supabase
-      .from("access_logs")
-      .select("*")
-      .in("nfc_id", nfcIds)
-      .order("created_at", { ascending: false })
-      .limit(50)
-
-    if (error) {
-      console.error("Error fetching logs:", error)
-    } else {
-      setLogs(data || [])
-    }
-
+  // Si no tiene locker asignado
+  if (userLockError || !userLock) {
+    setLogs([])
     setLoading(false)
     setRefreshing(false)
-
+    return
   }
+
+  const nfcId = userLock.nfc_id
+
+  // 2. Obtener logs SOLO de ese locker
+  const { data, error } = await supabase
+    .from("access_logs")
+    .select("*")
+    .eq("nfc_id", nfcId)
+    .order("created_at", { ascending: false })
+    .limit(50)
+
+  if (error) {
+    console.error("Error fetching logs:", error)
+  } else {
+    setLogs(data || [])
+  }
+
+  setLoading(false)
+  setRefreshing(false)
+}
 
   useEffect(() => {
     fetchLogs()
