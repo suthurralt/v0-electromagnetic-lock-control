@@ -32,19 +32,19 @@ export default function HistorialPage() {
       return
     }
 
-    // 1. NFC del Locker 1
-    const { data: nfcs, error: nfcsError } = await supabase
-      .from("locks") // 👈 ACÁ ponés tu tabla real
+   // Obtener lockers asignados al usuario
+    const { data: userLocks, error: userLocksError } = await supabase
+      .from("user_locks")
       .select("nfc_id")
-      .eq("name", "Locker 001")
-
-    if (nfcsError) {
-      console.error("Error fetching NFCs:", nfcsError)
+      .eq("user_id", user.id)
+    
+    if (userLocksError) {
+      console.error("Error fetching user lockers:", userLocksError)
       setLoading(false)
       return
     }
-
-    const nfcIds = nfcs?.map(n => n.nfc_id) || []
+    
+    const nfcIds = userLocks?.map(lock => lock.nfc_id) || []
 
     // 2. Logs filtrados
     const { data, error } = await supabase
