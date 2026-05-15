@@ -32,7 +32,7 @@ export default function HistorialPage() {
     return
   }
 
-  // 1. Buscar el locker asignado al usuario
+  // Buscar el locker asignado al usuario
   const { data: userLock, error: userLockError } = await supabase
     .from("user_locks")
     .select("nfc_id")
@@ -49,7 +49,7 @@ export default function HistorialPage() {
 
   const nfcId = userLock.nfc_id
 
-  // 2. Obtener logs SOLO de ese locker
+  // Obtener SOLO logs de ese locker
   const { data, error } = await supabase
     .from("access_logs")
     .select("*")
@@ -65,7 +65,7 @@ export default function HistorialPage() {
 
   setLoading(false)
   setRefreshing(false)
-}
+  }
 
   useEffect(() => {
     fetchLogs()
