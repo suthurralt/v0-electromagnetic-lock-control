@@ -23,48 +23,47 @@ export default function HistorialPage() {
   const [refreshing, setRefreshing] = useState(false)
 
   const fetchLogs = async () => {
-  const supabase = createClient()
+    const supabase = createClient()
 
-  const { data: { user } } = await supabase.auth.getUser()
+    const { data: { user } } = await supabase.auth.getUser()
 
-  if (!user) {
-    router.push("/login")
-    return
-  }
+    if (!user) {
+      router.push("/login")
+      return
+    }
 
-  // Buscar el locker asignado al usuario
-  const { data: userLock, error: userLockError } = await supabase
-    .from("user_locks")
-    .select("nfc_id")
-    .eq("user_id", user.id)
-    .single()
+    // Buscar el locker asignado al usuario
+    const { data: userLock, error: userLockError } = await supabase
+      .from("user_locks")
+      .select("nfc_id")
+      .eq("user_id", user.id)
+      .single()
 
-  // Si no tiene locker asignado
-  if (userLockError || !userLock) {
-    setLogs([])
+    // Si no tiene locker asignado
+    if (userLockError || !userLock) {
+      setLogs([])
+      setLoading(false)
+      setRefreshing(false)
+      return
+    }
+
+    const nfcId = userLock.nfc_id
+
+    // Obtener TODOS los logs de ese locker (Se eliminó el .limit(50))
+    const { data, error } = await supabase
+      .from("access_logs")
+      .select("*")
+      .eq("nfc_id", nfcId)
+      .order("created_at", { ascending: false })
+
+    if (error) {
+      console.error("Error fetching logs:", error)
+    } else {
+      setLogs(data || [])
+    }
+
     setLoading(false)
     setRefreshing(false)
-    return
-  }
-
-  const nfcId = userLock.nfc_id
-
-  // Obtener SOLO logs de ese locker
-  const { data, error } = await supabase
-    .from("access_logs")
-    .select("*")
-    .eq("nfc_id", nfcId)
-    .order("created_at", { ascending: false })
-    .limit(50)
-
-  if (error) {
-    console.error("Error fetching logs:", error)
-  } else {
-    setLogs(data || [])
-  }
-
-  setLoading(false)
-  setRefreshing(false)
   }
 
   useEffect(() => {
@@ -217,9 +216,3 @@ export default function HistorialPage() {
                 ))}
               </div>
             </div>
-          )}
-        </div>
-      </div>
-    </main>
-  )
-}
