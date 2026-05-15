@@ -216,3 +216,9 @@ export default function HistorialPage() {
                 ))}
               </div>
             </div>
+          )}
+        </div>
+      </div>
+    </main>
+  )
+}
