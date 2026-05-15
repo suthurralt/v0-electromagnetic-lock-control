@@ -104,44 +104,50 @@ export default function PedirLockerPage() {
   }
 
   const handleAssign = async (lock: LockWithStatus) => {
-    setAssigning(lock.id)
-    setMessage(null)
+  setAssigning(lock.id)
+  setMessage(null)
 
-    const supabase = createClient()
+  const supabase = createClient()
 
-    try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error("No hay sesion")
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error("No hay sesion")
 
-      // Check if already at max capacity (6 users)
-      if (lock.assignedCount >= 6) {
+    // Check if already at max capacity (6 users)
+    if (lock.assignedCount >= 6) {
+      throw new Error("Este locker ya tiene el maximo de usuarios (6)")
+    }
+
+    // BORRAR lockers anteriores del usuario
+    await supabase
+      .from("user_locks")
+      .delete()
+      .eq("user_id", user.id)
+
+    // Insertar nuevo locker
+    const { error } = await supabase
+      .from("user_locks")
+      .insert({
+        user_id: user.id,
+        nfc_id: lock.nfc_id,
+      })
+
+    if (error) {
+      if (error.message.includes("Maximum 6 users")) {
         throw new Error("Este locker ya tiene el maximo de usuarios (6)")
       }
-
-      // Insert with nfc_id instead of lock_id
-      const { error } = await supabase
-        .from("user_locks")
-        .insert({
-          user_id: user.id,
-          nfc_id: lock.nfc_id,
-        })
-
-      if (error) {
-        if (error.message.includes("Maximum 6 users")) {
-          throw new Error("Este locker ya tiene el maximo de usuarios (6)")
-        }
-        throw error
-      }
-
-      setMessage({ type: "success", text: `${lock.name} asignado correctamente` })
-      await loadLocks()
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Error al asignar locker"
-      setMessage({ type: "error", text: errorMessage })
-    } finally {
-      setAssigning(null)
+      throw error
     }
+
+    setMessage({ type: "success", text: `${lock.name} asignado correctamente` })
+    await loadLocks()
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Error al asignar locker"
+    setMessage({ type: "error", text: errorMessage })
+  } finally {
+    setAssigning(null)
   }
+}
 
   return (
     <main className="min-h-screen bg-background">
