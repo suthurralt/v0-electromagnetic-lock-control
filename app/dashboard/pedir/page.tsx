@@ -10,7 +10,7 @@ interface LockWithStatus {
   id: string
   name: string
   nfc_id: string
-  isAssigned: boolean
+  assignedCount: number  // How many users have this locker (max 6)
   isAssignedToMe: boolean
 }
 
@@ -33,7 +33,7 @@ export default function PedirLockerPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
-      // Get all locks
+      // Get all locks from the locks table
       const { data: allLocks } = await supabase
         .from("locks")
         .select("id, name, nfc_id")
@@ -41,25 +41,29 @@ export default function PedirLockerPage() {
 
       if (!allLocks) return
 
-      // Get my assigned locks
+      // Get my assigned locks (by nfc_id)
       const { data: myLocks } = await supabase
         .from("user_locks")
-        .select("lock_id")
+        .select("nfc_id")
         .eq("user_id", user.id)
 
-      const myLockIds = new Set(myLocks?.map(l => l.lock_id) ?? [])
+      const myNfcIds = new Set(myLocks?.map(l => l.nfc_id) ?? [])
 
-      // Get all assigned locks (to know which are taken)
+      // Get count of users per locker (by nfc_id)
       const { data: allAssignments } = await supabase
         .from("user_locks")
-        .select("lock_id")
+        .select("nfc_id")
 
-      const assignedLockIds = new Set(allAssignments?.map(l => l.lock_id) ?? [])
+      // Count assignments per nfc_id
+      const assignmentCounts: Record<string, number> = {}
+      allAssignments?.forEach(a => {
+        assignmentCounts[a.nfc_id] = (assignmentCounts[a.nfc_id] || 0) + 1
+      })
 
       const locksWithStatus: LockWithStatus[] = allLocks.map(lock => ({
         ...lock,
-        isAssigned: assignedLockIds.has(lock.id),
-        isAssignedToMe: myLockIds.has(lock.id),
+        assignedCount: assignmentCounts[lock.nfc_id] || 0,
+        isAssignedToMe: myNfcIds.has(lock.nfc_id),
       }))
 
       setLocks(locksWithStatus)
@@ -80,11 +84,12 @@ export default function PedirLockerPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error("No hay sesion")
 
+      // Delete by user_id + nfc_id (the record is removed, not marked as returned)
       const { error } = await supabase
         .from("user_locks")
         .delete()
         .eq("user_id", user.id)
-        .eq("lock_id", lock.id)
+        .eq("nfc_id", lock.nfc_id)
 
       if (error) throw error
 
@@ -99,33 +104,50 @@ export default function PedirLockerPage() {
   }
 
   const handleAssign = async (lock: LockWithStatus) => {
-    setAssigning(lock.id)
-    setMessage(null)
+  setAssigning(lock.id)
+  setMessage(null)
 
-    const supabase = createClient()
+  const supabase = createClient()
 
-    try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error("No hay sesion")
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error("No hay sesion")
 
-      const { error } = await supabase
-        .from("user_locks")
-        .insert({
-          user_id: user.id,
-          lock_id: lock.id,
-        })
-
-      if (error) throw error
-
-      setMessage({ type: "success", text: `${lock.name} asignado correctamente` })
-      await loadLocks()
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Error al asignar locker"
-      setMessage({ type: "error", text: errorMessage })
-    } finally {
-      setAssigning(null)
+    // Check if already at max capacity (6 users)
+    if (lock.assignedCount >= 6) {
+      throw new Error("Este locker ya tiene el maximo de usuarios (6)")
     }
+
+    // BORRAR lockers anteriores del usuario
+    await supabase
+      .from("user_locks")
+      .delete()
+      .eq("user_id", user.id)
+
+    // Insertar nuevo locker
+    const { error } = await supabase
+      .from("user_locks")
+      .insert({
+        user_id: user.id,
+        nfc_id: lock.nfc_id,
+      })
+
+    if (error) {
+      if (error.message.includes("Maximum 6 users")) {
+        throw new Error("Este locker ya tiene el maximo de usuarios (6)")
+      }
+      throw error
+    }
+
+    setMessage({ type: "success", text: `${lock.name} asignado correctamente` })
+    await loadLocks()
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Error al asignar locker"
+    setMessage({ type: "error", text: errorMessage })
+  } finally {
+    setAssigning(null)
   }
+}
 
   return (
     <main className="min-h-screen bg-background">
@@ -136,12 +158,12 @@ export default function PedirLockerPage() {
             <Button variant="ghost" size="icon" onClick={() => router.push("/dashboard")}>
               <ArrowLeft className="h-5 w-5" />
             </Button>
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-white">              
               <Lock className="h-5 w-5" />
             </div>
             <div>
-              <h1 className="font-semibold text-card-foreground">Pedir Locker</h1>
-              <p className="text-xs text-muted-foreground">Selecciona un locker disponible</p>
+              <h1 className="font-semibold text-card-foreground">Pedir locker</h1>
+              <p className="text-xs text-muted-foreground">Seleccioná un locker disponible</p>
             </div>
           </div>
         </div>
@@ -179,30 +201,24 @@ export default function PedirLockerPage() {
                     className={`p-4 rounded-xl border ${
                       lock.isAssignedToMe
                         ? "border-primary bg-primary/5"
-                        : lock.isAssigned
+                        : lock.assignedCount >= 6
                         ? "border-border bg-muted/50"
                         : "border-border bg-card"
                     }`}
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <div className={`flex h-12 w-12 items-center justify-center rounded-lg ${
-                          lock.isAssignedToMe
-                            ? "bg-primary text-primary-foreground"
-                            : lock.isAssigned
-                            ? "bg-muted text-muted-foreground"
-                            : "bg-secondary text-secondary-foreground"
-                        }`}>
-                          <Lock className="h-6 w-6" />
+                        <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-sky-50">
+                          <Lock className="h-6 w-6 text-sky-600" />
                         </div>
                         <div>
                           <h3 className="font-medium text-foreground">{lock.name}</h3>
                           <p className="text-sm text-muted-foreground">
                             {lock.isAssignedToMe 
                               ? "Asignado a ti" 
-                              : lock.isAssigned 
-                              ? "No disponible" 
-                              : "Disponible"}
+                              : lock.assignedCount >= 6 
+                              ? "Locker lleno (6/6)" 
+                              : `Disponible (${lock.assignedCount}/6 usuarios)`}
                           </p>
                         </div>
                       </div>
@@ -221,7 +237,7 @@ export default function PedirLockerPage() {
                             "Devolver"
                           )}
                         </Button>
-                      ) : !lock.isAssigned ? (
+                      ) : lock.assignedCount < 6 ? (
                         <Button
                           size="sm"
                           onClick={() => handleAssign(lock)}

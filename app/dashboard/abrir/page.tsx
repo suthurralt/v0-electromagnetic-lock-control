@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { ArrowLeft, Lock } from "lucide-react"
@@ -12,85 +12,189 @@ import { AccessLog, type AccessLogEntry } from "@/components/access-log"
 
 type LockerStatus = "idle" | "scanning" | "verifying" | "granted" | "denied"
 
+const normalizeNfcId = (id: string) => {
+  return id.replace(/:/g, "").toLowerCase()
+}
+
 export default function AbrirLockerPage() {
   const router = useRouter()
   const [status, setStatus] = useState<LockerStatus>("idle")
   const [isNfcSupported, setIsNfcSupported] = useState(true)
+  const [isNfcActive, setIsNfcActive] = useState(false)
   const [accessLog, setAccessLog] = useState<AccessLogEntry[]>([])
+  const [lastScannedId, setLastScannedId] = useState<string>("")
+  const [errorMessage, setErrorMessage] = useState<string>("")
+  const ndefReaderRef = useRef<NDEFReader | null>(null)
+  const isProcessingRef = useRef(false)
+  const abortControllerRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
     // Check NFC support
-    if (typeof window !== "undefined" && "NDEFReader" in window) {
-      setIsNfcSupported(true)
-    } else {
-      setIsNfcSupported(false)
+    if (typeof window !== "undefined") {
+      if ("NDEFReader" in window) {
+        setIsNfcSupported(true)
+      } else {
+        setIsNfcSupported(false)
+        setErrorMessage("Tu navegador no soporta NFC. Usa Chrome en Android.")
+      }
+    }
+
+    // Cleanup NFC reader on unmount
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
+      }
     }
   }, [])
 
-  const handleScan = async () => {
+  // Start NFC scan - requires user interaction (button click)
+  const startNfcScan = async () => {
+    if (!("NDEFReader" in window)) {
+      setIsNfcSupported(false)
+      setErrorMessage("Tu navegador no soporta NFC. Usa Chrome en Android.")
+      return
+    }
+
+    // If already active, just update status
+    if (isNfcActive && ndefReaderRef.current) {
+      setStatus("scanning")
+      setErrorMessage("")
+      return
+    }
+
     setStatus("scanning")
+    setErrorMessage("")
+    isProcessingRef.current = false
 
-    // Simulate NFC scan for demo - using the prototype NFC ID
-    setTimeout(async () => {
-      const simulatedNfcId = "NFC-PROTO-001-ABC123"
+    try {
+      // Create abort controller for cleanup
+      abortControllerRef.current = new AbortController()
       
-      setStatus("verifying")
+      // @ts-expect-error - NDEFReader is not in TypeScript types yet
+      const ndef = new NDEFReader()
+      ndefReaderRef.current = ndef
+      
+      await ndef.scan({ signal: abortControllerRef.current.signal })
+      setIsNfcActive(true)
 
-      try {
-        const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
+      ndef.addEventListener("reading", async ({ serialNumber }: { serialNumber: string }) => {
+        // Prevent multiple simultaneous processing
+        if (isProcessingRef.current) return
+        isProcessingRef.current = true
 
-        if (!user) {
-          setStatus("denied")
-          return
-        }
-
-        // Get lock by NFC ID
-        const { data: lock } = await supabase
-          .from("locks")
-          .select("id, name, nfc_id")
-          .eq("nfc_id", simulatedNfcId)
-          .single()
-
-        if (!lock) {
-          setStatus("denied")
-          return
-        }
-
-        // Check if user has permission for this lock
-        const { data: permission } = await supabase
-          .from("user_locks")
-          .select("id")
-          .eq("user_id", user.id)
-          .eq("lock_id", lock.id)
-          .single()
-
-        const newEntry: AccessLogEntry = {
-          id: Date.now().toString(),
-          lockerId: simulatedNfcId,
-          lockerName: lock.name,
-          timestamp: new Date(),
-          success: !!permission,
-          userId: user.id,
-        }
-
-        setAccessLog((prev) => [newEntry, ...prev.slice(0, 9)])
-
-        if (permission) {
-          setStatus("granted")
-          // Here you would send the command to ESP8266
-          // await fetch('http://ESP8266_IP/open', { method: 'POST' })
+        // Convert serial number to format XX:XX:XX:XX:XX:XX:XX
+        let formattedId: string
+        if (serialNumber.includes(":")) {
+          formattedId = serialNumber.toUpperCase()
         } else {
-          setStatus("denied")
+          formattedId = serialNumber
+            .match(/.{1,2}/g)
+            ?.join(":")
+            .toUpperCase() || serialNumber.toUpperCase()
         }
-      } catch (error) {
-        console.error("Error verifying access:", error)
+
+        const normalizedId = normalizeNfcId(formattedId)
+
+        setLastScannedId(normalizedId)
+        setStatus("verifying")
+        await verifyNfcAccess(normalizedId)
+
+      })
+
+      ndef.addEventListener("readingerror", () => {
+        setErrorMessage("Error al leer el tag NFC. Intenta de nuevo.")
         setStatus("denied")
+        isProcessingRef.current = false
+        setTimeout(() => setStatus("idle"), 3000)
+      })
+    } catch (error) {
+      const err = error as Error
+      if (err.name === "NotAllowedError") {
+        setErrorMessage("Permiso NFC denegado. Permite el acceso a NFC en tu navegador.")
+      } else if (err.name === "NotSupportedError") {
+        setErrorMessage("NFC no esta disponible en este dispositivo.")
+        setIsNfcSupported(false)
+      } else {
+        setErrorMessage(`Error: ${err.message}`)
+      }
+      setStatus("denied")
+      setIsNfcActive(false)
+      setTimeout(() => setStatus("idle"), 3000)
+    }
+  }
+
+  const verifyNfcAccess = async (nfcId: string) => {
+    setStatus("verifying")
+
+    try {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+
+      if (!user) {
+        console.error("No user logged in")
+        setStatus("denied")
+        isProcessingRef.current = false
+        setTimeout(() => setStatus("idle"), 3000)
+        return
       }
 
-      // Reset after 3 seconds
-      setTimeout(() => setStatus("idle"), 3000)
-    }, 2000)
+      // Check if user has this nfc_id in user_locks (direct lookup)
+      // Using ilike for case-insensitive comparison
+      const { data: userLock, error: lockError } = await supabase
+        .from("user_locks")
+        .select("id, nfc_id")
+        .eq("user_id", user.id)
+        .ilike("nfc_id", nfcId)
+        .single()
+
+      const hasAccess = !!userLock && !lockError
+
+      // Get locker name from locks table for display
+      let lockerName = nfcId
+      const { data: lockInfo } = await supabase
+        .from("locks")
+        .select("name")
+        .ilike("nfc_id", nfcId)
+        .single()
+      
+      if (lockInfo) {
+        lockerName = lockInfo.name
+      }
+
+      const newEntry: AccessLogEntry = {
+        id: Date.now().toString(),
+        lockerId: nfcId,
+        lockerName: lockerName,
+        timestamp: new Date(),
+        success: hasAccess,
+        userId: user.id,
+      }
+
+      setAccessLog((prev) => [newEntry, ...prev.slice(0, 9)])
+
+      // Save access log to database
+      await supabase.from("access_logs").insert({
+        user_id: user.id,
+        nfc_id: nfcId,
+        locker_name: lockerName,
+        success: hasAccess,
+      })
+
+      if (hasAccess) {
+        setStatus("granted")
+        // TODO: Here you would send the command to ESP8266 to open the lock
+        // await fetch('http://ESP8266_IP/open', { method: 'POST' })
+      } else {
+        setStatus("denied")
+      }
+    } catch (error) {
+      console.error("Error verifying access:", error)
+      setStatus("denied")
+    }
+
+    isProcessingRef.current = false
+    // Reset after 3 seconds
+    setTimeout(() => setStatus("idle"), 3000)
   }
 
   return (
@@ -102,11 +206,11 @@ export default function AbrirLockerPage() {
             <Button variant="ghost" size="icon" onClick={() => router.push("/dashboard")}>
               <ArrowLeft className="h-5 w-5" />
             </Button>
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-white">              
               <Lock className="h-5 w-5" />
             </div>
             <div>
-              <h1 className="font-semibold text-card-foreground">Abrir Locker</h1>
+              <h1 className="font-semibold text-card-foreground">Abrir locker</h1>
               <p className="text-xs text-muted-foreground">Escanea el NFC para abrir</p>
             </div>
           </div>
@@ -127,8 +231,11 @@ export default function AbrirLockerPage() {
           {/* NFC Scanner */}
           <NfcScanner
             status={status}
-            onScan={handleScan}
+            onScan={startNfcScan}
             isNfcSupported={isNfcSupported}
+            isNfcActive={isNfcActive}
+            lastScannedId={lastScannedId}
+            errorMessage={errorMessage}
           />
 
           {/* Access Log */}

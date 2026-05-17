@@ -48,7 +48,7 @@ export default function LoginPage() {
           },
         })
         if (error) throw error
-        setSuccess("Usuario registrado. Ahora podes iniciar sesion.")
+        setSuccess("Usuario registrado. Ahora podés iniciar sesión.")
         setMode("login")
         setPassword("")
       }
@@ -64,12 +64,12 @@ export default function LoginPage() {
     <main className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="flex flex-col items-center mb-8">
-          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary text-primary-foreground mb-4">
+          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-600 text-white mb-4">
             <Lock className="h-8 w-8" />
           </div>
-          <h1 className="text-2xl font-bold text-foreground">SmartLocker</h1>
+          <h1 className="text-2xl font-bold text-foreground">ITBA Lockers</h1>
           <p className="text-muted-foreground">
-            {mode === "login" ? "Inicia sesion para continuar" : "Crea tu cuenta"}
+            {mode === "login" ? "Inicia sesión para continuar" : "Crea tu cuenta"}
           </p>
         </div>
 
@@ -98,7 +98,7 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full pl-10 pr-12 py-3 border border-input rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                placeholder="Tu contrasena"
+                placeholder="Tu contraseña"
                 required
                 minLength={6}
               />
@@ -129,7 +129,7 @@ export default function LoginPage() {
             className="w-full h-12 text-lg"
             disabled={loading}
           >
-            {loading ? "Cargando..." : mode === "login" ? "Iniciar Sesion" : "Registrarse"}
+            {loading ? "Cargando..." : mode === "login" ? "Iniciar Sesión" : "Registrarse"}
           </Button>
 
           <div className="text-center">
@@ -141,7 +141,7 @@ export default function LoginPage() {
               }}
               className="text-sm text-muted-foreground hover:text-foreground"
             >
-              {mode === "login" ? "No tenes cuenta? Registrate" : "Ya tenes cuenta? Inicia sesion"}
+              {mode === "login" ? "¿No tenés cuenta? Registrate" : "¿Ya tenés cuenta? Inicia sesión"}
             </button>
           </div>
         </form>

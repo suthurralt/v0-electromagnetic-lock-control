@@ -100,7 +100,7 @@ export function LockerAnimation({ status }: LockerAnimationProps) {
         {doorOpen && (
           <div className="absolute inset-2 flex items-center justify-center rounded bg-muted-foreground/10">
             <div className="text-center">
-              <div className="text-2xl">📦</div>
+              
               <p className="mt-1 text-xs text-muted-foreground">Vacio</p>
             </div>
           </div>
