@@ -179,39 +179,33 @@ export default function AbrirLockerPage() {
         locker_name: lockerName,
         success: hasAccess,
       })
+    if (hasAccess) {
+      setStatus("granted")
 
-      if (hasAccess) {
-        setStatus("granted")
-
-        const { data: { session } } = await supabase.auth.getSession()
-
-        if (session) {
-          try {
-            const response = await fetch(
-              "https://hfbdynsfkrokiemyjdcs.supabase.co/functions/v1/open_locker",
-              {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  "Authorization": `Bearer ${session.access_token}`,
-                },
-                body: JSON.stringify({ nfc_id: nfcId }),
-              }
-            )
-
-            if (!response.ok) {
-              const err = await response.json()
-              console.error("Error abriendo cerradura:", err)
-            } else {
-              console.log("Cerradura abierta exitosamente")
-            }
-          } catch (err) {
-            console.error("Error de red al contactar la cerradura:", err)
+      try {
+        const response = await fetch(
+          `http://10.226.23.113/open`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Api-Secret": "sb_secret_I9nE91zttXDkIIeOZkv7Og_QI9zERI4",
+            },
           }
+        )
+
+        if (!response.ok) {
+          console.error("Error abriendo cerradura")
+        } else {
+          console.log("Cerradura abierta exitosamente")
         }
-      } else {
-        setStatus("denied")
+      } catch (err) {
+        console.error("Error de red al contactar la cerradura:", err)
       }
+    } else {
+      setStatus("denied")
+    }
+  
     } catch (error) {
       console.error("Error verifying access:", error)
       setStatus("denied")
