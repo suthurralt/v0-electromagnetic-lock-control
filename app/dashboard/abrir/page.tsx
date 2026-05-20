@@ -189,7 +189,7 @@ export default function AbrirLockerPage() {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              "X-Api-Secret": "sb_secret_I9nE91zttXDkIIeOZkv7Og_QI9zERI4",
+              "X-Api-Secret": process.env.NEXT_PUBLIC_ESP_SECRET!,
             },
           }
         )
