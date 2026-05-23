@@ -184,7 +184,7 @@ export default function AbrirLockerPage() {
 
       try {
         const response = await fetch(
-          `http://10.226.23.113/open`,
+          `http://172.23.72.113/open`,  //ESTA ES LA IP DE LA RASPBERRY, CAMBIAR SI SE USA OTRA
           {
             method: "POST",
             headers: {
